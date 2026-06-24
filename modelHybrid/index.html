@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hybrid Routing - UNS Simulation</title>
+
+    <!-- Leaflet CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --bg-glass: rgba(15, 23, 42, 0.92);
+            --border-glass: rgba(255, 255, 255, 0.1);
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent-cyan: #06b6d4;
+            --accent-red: #ef4444;
+            --accent-yellow: #eab308;
+            --btn-hover: #0891b2;
+            --danger: #ef4444;
+            --success: #10b981;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #ffffff;
+            color: var(--text-primary);
+            overflow: hidden;
+        }
+
+        #map {
+            height: 100vh;
+            width: 100vw;
+            z-index: 1;
+        }
+
+        /* Sidebar Styling */
+        #sidebar {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 340px;
+            z-index: 1000;
+            background: var(--bg-glass);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--border-glass);
+            border-radius: 16px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--border-glass);
+            background: linear-gradient(135deg, rgba(6, 182, 212, 0.1), rgba(239, 68, 68, 0.1));
+        }
+
+        .sidebar-header h2 {
+            margin: 0 0 15px 0;
+            font-size: 1.3rem;
+            font-weight: 700;
+            background: linear-gradient(to right, var(--accent-cyan), #8b5cf6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .instruction {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-bottom: 20px;
+            line-height: 1.6;
+        }
+
+        button.btn-primary {
+            background: linear-gradient(to right, var(--accent-cyan), #3b82f6);
+            color: white;
+            border: none;
+            padding: 12px;
+            width: 100%;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.95rem;
+            transition: opacity 0.2s, transform 0.1s;
+            box-shadow: 0 4px 15px rgba(6, 182, 212, 0.3);
+        }
+
+        button.btn-primary:hover {
+            opacity: 0.9;
+        }
+
+        button.btn-primary:active {
+            transform: scale(0.98);
+        }
+
+        button.btn-primary:disabled {
+            background: #334155;
+            box-shadow: none;
+            cursor: not-allowed;
+            color: var(--text-secondary);
+        }
+
+        /* Legend Area */
+        .legend-area {
+            padding: 20px;
+            font-size: 0.85rem;
+        }
+
+        .legend-title {
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 1px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 12px;
+            gap: 12px;
+        }
+
+        .legend-color {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            border: 2px solid white;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .color-red {
+            background: var(--accent-red);
+            box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+        }
+
+        .color-yellow {
+            background: var(--accent-yellow);
+            box-shadow: 0 0 8px rgba(234, 179, 8, 0.5);
+        }
+
+        .color-green {
+            background: var(--success);
+            box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+        }
+
+        .legend-desc strong {
+            display: block;
+            color: var(--text-primary);
+            margin-bottom: 2px;
+        }
+
+        .legend-desc span {
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+        }
+
+        /* Status Footer */
+        .status-footer {
+            padding: 12px 20px;
+            font-size: 0.85rem;
+            border-top: 1px solid var(--border-glass);
+            background: rgba(0, 0, 0, 0.3);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* Loading Spinner */
+        .spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-top-color: var(--accent-cyan);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            display: none;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Custom Markers CSS */
+        .custom-marker {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            border: 2px solid white;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+            margin-top: -8px;
+            margin-left: -8px;
+        }
+
+        .marker-user {
+            background: #3b82f6;
+            width: 20px;
+            height: 20px;
+            margin-top: -10px;
+            margin-left: -10px;
+            animation: pulse-blue 2s infinite;
+        }
+
+        .marker-daftar {
+            background: var(--accent-red);
+            opacity: 0.8;
+        }
+
+        .marker-kandidat {
+            background: var(--accent-yellow);
+            width: 18px;
+            height: 18px;
+            margin-top: -9px;
+            margin-left: -9px;
+        }
+
+        .marker-winner {
+            background: var(--success);
+            width: 24px;
+            height: 24px;
+            margin-top: -12px;
+            margin-left: -12px;
+            z-index: 1000 !important;
+            animation: pulse-green 2s infinite;
+        }
+
+        @keyframes pulse-blue {
+            0% {
+                box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);
+            }
+
+            70% {
+                box-shadow: 0 0 0 15px rgba(59, 130, 246, 0);
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
+            }
+        }
+
+        @keyframes pulse-green {
+            0% {
+                box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+            }
+
+            70% {
+                box-shadow: 0 0 0 20px rgba(16, 185, 129, 0);
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+            }
+        }
+
+        .leaflet-popup-content {
+            font-family: 'Inter', sans-serif;
+            font-size: 14px;
+        }
+
+        .popup-title {
+            font-weight: bold;
+            color: #1e293b;
+            margin-bottom: 5px;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 4px;
+        }
+
+        .eta-highlight {
+            color: var(--success);
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="sidebar">
+        <div class="sidebar-header">
+            <h2>Hybrid Routing UNS</h2>
+            <div class="instruction">
+                <b>Langkah-langkah:</b><br>
+                1. Klik peta untuk titik jemput.<br>
+                2. Klik tombol di bawah ini.<br>
+                3. Klik titik marker driver di peta untuk melihat rute & ETA.
+            </div>
+            <button id="btn-find" class="btn-primary" onclick="findDriver()">
+                <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+                    <div id="spinner" class="spinner"></div>
+                    <span id="btn-text">Cari Driver Terbaik</span>
+                </div>
+            </button>
+        </div>
+
+        <div class="legend-area">
+            <div class="legend-title">Legenda Marker</div>
+
+            <div class="legend-item">
+                <div class="legend-color color-red"></div>
+                <div class="legend-desc">
+                    <strong>Daftar Driver</strong>
+                    <span>Di luar radius 1KM (Rute tidak dihitung)</span>
+                </div>
+            </div>
+
+            <div class="legend-item">
+                <div class="legend-color color-yellow"></div>
+                <div class="legend-desc">
+                    <strong>Kandidat Driver</strong>
+                    <span>Berada dalam radius 1KM</span>
+                </div>
+            </div>
+
+            <div class="legend-item">
+                <div class="legend-color color-green"></div>
+                <div class="legend-desc">
+                    <strong>Driver Terpilih</strong>
+                    <span>ETA Tercepat menuju lokasi Anda</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="status-footer">
+            <div id="status-dot" style="width: 8px; height: 8px; border-radius: 50%; background: #475569;"></div>
+            <span id="status-text">Menunggu input lokasi...</span>
+        </div>
+    </div>
+
+    <div id="map"></div>
+
+    <script>
+        // Init Map - OSM Standard tiles
+        var map = L.map('map').setView([-7.5590, 110.8560], 15);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        // State variables
+        let userMarker = null;
+        let driverMarkers = [];
+        let currentRouteLine = null;
+
+        // Icons
+        const iconUser = L.divIcon({ className: 'custom-marker marker-user' });
+        const iconDaftar = L.divIcon({ className: 'custom-marker marker-daftar' });
+        const iconKandidat = L.divIcon({ className: 'custom-marker marker-kandidat' });
+        const iconWinner = L.divIcon({ className: 'custom-marker marker-winner' });
+
+        // Handle Map Click
+        map.on('click', function (e) {
+            clearMapData();
+
+            userMarker = L.marker(e.latlng, { icon: iconUser, zIndexOffset: 1000 }).addTo(map);
+
+            let popupContent = `<div class='popup-title'>Titik Jemput Anda</div>Lat: ${e.latlng.lat.toFixed(5)}<br>Lng: ${e.latlng.lng.toFixed(5)}`;
+            userMarker.bindPopup(popupContent).openPopup();
+
+            updateStatus('Titik dikunci. Siap mencari driver.', 'var(--accent-cyan)');
+            document.getElementById('btn-find').disabled = false;
+        });
+
+        function clearMapData() {
+            driverMarkers.forEach(m => map.removeLayer(m));
+            driverMarkers = [];
+            if (currentRouteLine) map.removeLayer(currentRouteLine);
+            if (userMarker) map.removeLayer(userMarker);
+        }
+
+        function updateStatus(msg, color) {
+            document.getElementById('status-text').innerText = msg;
+            document.getElementById('status-dot').style.background = color;
+        }
+
+        function toggleLoading(isLoading) {
+            const btn = document.getElementById('btn-find');
+            const spinner = document.getElementById('spinner');
+            const text = document.getElementById('btn-text');
+
+            btn.disabled = isLoading;
+            spinner.style.display = isLoading ? 'block' : 'none';
+            text.innerText = isLoading ? 'Memproses...' : 'Cari Driver Terbaik';
+        }
+
+        function drawRoute(koordinat) {
+            if (currentRouteLine) map.removeLayer(currentRouteLine);
+            if (!koordinat || koordinat.length === 0) return;
+
+            currentRouteLine = L.polyline(koordinat, {
+                color: '#3b82f6', // blue for route
+                weight: 6,
+                opacity: 0.8,
+                lineJoin: 'round'
+            }).addTo(map);
+        }
+
+        function createMarker(driver, category, hasRoute = false) {
+            let icon, popupContent;
+
+            if (category === 'terpilih') {
+                icon = iconWinner;
+            } else if (category === 'kandidat') {
+                icon = iconKandidat;
+            } else {
+                icon = iconDaftar;
+            }
+
+            let m = L.marker(driver.latlng, {
+                icon: icon,
+                driverId: driver.driver_id,
+                category: category,
+                routeData: driver.rute_koordinat,
+                zIndexOffset: (category === 'terpilih') ? 500 : (category === 'kandidat' ? 400 : 300)
+            }).addTo(map);
+
+            if (hasRoute) {
+                popupContent = `
+                    <div class='popup-title'>${driver.driver_id} ${category === 'terpilih' ? '🏆' : ''}</div>
+                    Jarak Lurus: ${driver.jarak_euclidean_m} m<br>
+                    Jarak Rute: <b>${driver.jarak_rute_m} m</b><br>
+                    Simpang: ${driver.jumlah_simpang}<br>
+                    ETA: <span class="eta-highlight">${driver.eta_teks}</span>
+                `;
+            } else {
+                popupContent = `
+                    <div class='popup-title'>${driver.driver_id}</div>
+                    Jarak Lurus: ${driver.jarak_euclidean_m} m<br>
+                    <i>(Di luar radius 1KM, rute tidak dihitung)</i>
+                `;
+            }
+
+            m.bindPopup(popupContent);
+
+            m.on('click', function () {
+                if (hasRoute && driver.rute_koordinat) {
+                    drawRoute(driver.rute_koordinat);
+                } else {
+                    if (currentRouteLine) map.removeLayer(currentRouteLine);
+                }
+            });
+
+            driverMarkers.push(m);
+            return m;
+        }
+
+        function findDriver() {
+            if (!userMarker) {
+                alert("Klik dulu di peta untuk menentukan lokasi Anda!");
+                return;
+            }
+
+            const lat = userMarker.getLatLng().lat;
+            const lng = userMarker.getLatLng().lng;
+
+            toggleLoading(true);
+            updateStatus('Mengeksekusi Algoritma Hybrid...', '#eab308');
+
+            fetch('http://localhost:5000/find-driver', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ lat: lat, lng: lng })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    toggleLoading(false);
+
+                    if (data.status === "gagal") {
+                        updateStatus(data.pesan, 'var(--danger)');
+                        alert(data.pesan);
+                        return;
+                    }
+
+                    updateStatus('Driver tercepat ditemukan!', 'var(--success)');
+
+                    // Pindahkan marker user ke node actual di graf
+                    userMarker.setLatLng(data.user_latlng);
+
+                    let winnerId = data.driver_terpilih ? data.driver_terpilih.driver_id : null;
+                    let kandidatIds = new Set(data.kandidat_driver.map(k => k.driver_id));
+
+                    // Process all drivers (Merah untuk Daftar)
+                    data.daftar_driver.forEach(d => {
+                        if (!kandidatIds.has(d.driver_id)) {
+                            createMarker(d, 'daftar', false);
+                        }
+                    });
+
+                    // Process Kandidat (Kuning)
+                    data.kandidat_driver.forEach(k => {
+                        if (k.driver_id !== winnerId) {
+                            createMarker(k, 'kandidat', true);
+                        }
+                    });
+
+                    // Process Winner (Hijau)
+                    if (data.driver_terpilih) {
+                        let winnerMarker = createMarker(data.driver_terpilih, 'terpilih', true);
+
+                        // Draw winner route initially
+                        if (data.driver_terpilih.rute_koordinat) {
+                            drawRoute(data.driver_terpilih.rute_koordinat);
+                        }
+                        winnerMarker.openPopup();
+                    }
+
+                    // Fit bounds to show user and winner
+                    if (data.driver_terpilih && currentRouteLine) {
+                        map.fitBounds(currentRouteLine.getBounds(), { padding: [50, 50] });
+                    }
+
+                })
+                .catch(err => {
+                    toggleLoading(false);
+                    updateStatus('Error koneksi ke server!', 'var(--danger)');
+                    console.error(err);
+                });
+        }
+    </script>
+</body>
+
+</html>

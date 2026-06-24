@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dijkstra Ripple Visualization</title>
+
+    <!-- Leaflet CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --bg-glass: rgba(15, 23, 42, 0.92);
+            --border-glass: rgba(255, 255, 255, 0.1);
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent-cyan: #06b6d4;
+            --accent-red: #ef4444;
+            --accent-yellow: #eab308;
+            --success: #10b981;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #1e1e1e;
+            color: var(--text-primary);
+            overflow: hidden;
+        }
+
+        #map {
+            height: 100vh;
+            width: 100vw;
+            z-index: 1;
+        }
+
+        #sidebar {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 360px;
+            z-index: 1000;
+            background: var(--bg-glass);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--border-glass);
+            border-radius: 16px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+            overflow: hidden;
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--border-glass);
+            background: linear-gradient(135deg, rgba(6, 182, 212, 0.1), rgba(239, 68, 68, 0.1));
+        }
+
+        .sidebar-header h2 {
+            margin: 0 0 15px 0;
+            font-size: 1.3rem;
+            font-weight: 700;
+            background: linear-gradient(to right, var(--accent-cyan), #8b5cf6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+        }
+
+        .control-group label {
+            display: block;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-bottom: 5px;
+        }
+
+        select, input[type="range"] {
+            width: 100%;
+            padding: 8px;
+            border-radius: 6px;
+            border: 1px solid var(--border-glass);
+            background: rgba(255,255,255,0.05);
+            color: white;
+            font-family: inherit;
+        }
+        
+        select option {
+            background: #1e293b;
+            color: white;
+        }
+
+        button.btn-primary {
+            background: linear-gradient(to right, var(--accent-cyan), #3b82f6);
+            color: white;
+            border: none;
+            padding: 12px;
+            width: 100%;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.95rem;
+            transition: all 0.2s;
+            margin-top: 10px;
+        }
+
+        button.btn-primary:hover { opacity: 0.9; }
+        button.btn-primary:disabled { background: #334155; cursor: not-allowed; color: #94a3b8; }
+
+        .stats-area {
+            padding: 20px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .stat-box {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.05);
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-val {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--accent-cyan);
+            margin-bottom: 4px;
+        }
+
+        .stat-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+        }
+
+        .progress-container {
+            width: 100%;
+            height: 6px;
+            background: #334155;
+            margin-top: 0;
+        }
+
+        .progress-bar {
+            height: 100%;
+            width: 0%;
+            background: var(--accent-cyan);
+            transition: width 0.1s;
+        }
+
+        /* Marker Animations */
+        .custom-marker {
+            border-radius: 50%;
+            border: 2px solid white;
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+        }
+
+        .marker-user { background: #3b82f6; width: 20px; height: 20px; margin-top: -10px; margin-left: -10px; animation: pulse-blue 2s infinite; }
+        .marker-driver { background: var(--success); width: 20px; height: 20px; margin-top: -10px; margin-left: -10px; animation: pulse-green 2s infinite; }
+
+        @keyframes pulse-blue { 0% { box-shadow: 0 0 0 0 rgba(59,130,246,0.7); } 70% { box-shadow: 0 0 0 15px rgba(59,130,246,0); } 100% { box-shadow: 0 0 0 0 rgba(59,130,246,0); } }
+        @keyframes pulse-green { 0% { box-shadow: 0 0 0 0 rgba(16,185,129,0.7); } 70% { box-shadow: 0 0 0 15px rgba(16,185,129,0); } 100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); } }
+        
+        /* The final animated path */
+        .animated-path {
+            stroke-dasharray: 20;
+            stroke-dashoffset: 100;
+            animation: dash 2s linear forwards;
+        }
+
+        @keyframes dash {
+            to {
+                stroke-dashoffset: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="sidebar">
+        <div class="sidebar-header">
+            <h2>Dijkstra Ripple Visualizer</h2>
+            
+            <div class="control-group">
+                <label>Pilih Kandidat Driver</label>
+                <select id="driver-select">
+                    <option value="">Memuat driver...</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label>Kecepatan Animasi (Delay ms)</label>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <input type="range" id="speed-slider" min="1" max="50" value="5">
+                    <span id="speed-val" style="font-size: 0.85rem; width: 30px;">5</span>
+                </div>
+            </div>
+
+            <button id="btn-start" class="btn-primary" onclick="startVisualization()">
+                ▶ Mulai Animasi
+            </button>
+        </div>
+
+        <div class="progress-container">
+            <div id="progress-bar" class="progress-bar"></div>
+        </div>
+
+        <div class="stats-area">
+            <div class="stat-box">
+                <div class="stat-val" id="stat-visited">0</div>
+                <div class="stat-label">Node Dieksplorasi</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-val" id="stat-cost">0</div>
+                <div class="stat-label">ETA (Detik)</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="map"></div>
+
+    <script>
+        // Init Map - Dark theme to make ripples pop
+        var map = L.map('map').setView([-7.5590, 110.8560], 15);
+
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+        }).addTo(map);
+
+        const iconUser = L.divIcon({ className: 'custom-marker marker-user' });
+        const iconDriver = L.divIcon({ className: 'custom-marker marker-driver' });
+
+        let userMarker = null;
+        let driverMarker = null;
+        let rippleLayer = L.layerGroup().addTo(map);
+        let pathLine = null;
+        let animationInterval = null;
+
+        const speedSlider = document.getElementById('speed-slider');
+        const speedVal = document.getElementById('speed-val');
+        speedSlider.oninput = function() {
+            speedVal.innerText = this.value;
+        }
+
+        // Load drivers
+        fetch('http://localhost:5001/kandidat-list')
+            .then(res => res.json())
+            .then(data => {
+                const select = document.getElementById('driver-select');
+                select.innerHTML = '';
+                data.kandidat.forEach(k => {
+                    let opt = document.createElement('option');
+                    opt.value = k.idx;
+                    opt.innerHTML = `${k.driver_id} (${k.jarak_euclidean} m)`;
+                    select.appendChild(opt);
+                });
+            })
+            .catch(err => {
+                console.error("Failed to load drivers", err);
+                document.getElementById('driver-select').innerHTML = '<option value="">Error koneksi ke server</option>';
+            });
+
+        function clearMap() {
+            rippleLayer.clearLayers();
+            if(pathLine) map.removeLayer(pathLine);
+            if(userMarker) map.removeLayer(userMarker);
+            if(driverMarker) map.removeLayer(driverMarker);
+            document.getElementById('stat-visited').innerText = '0';
+            document.getElementById('stat-cost').innerText = '0';
+            document.getElementById('progress-bar').style.width = '0%';
+            if(animationInterval) clearInterval(animationInterval);
+        }
+
+        function startVisualization() {
+            const driverIdx = document.getElementById('driver-select').value;
+            if(driverIdx === "") return alert("Pilih driver terlebih dahulu!");
+
+            const btn = document.getElementById('btn-start');
+            btn.disabled = true;
+            btn.innerText = "Memuat data...";
+            clearMap();
+
+            fetch('http://localhost:5001/dijkstra-visual', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ driver_idx: parseInt(driverIdx) })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if(data.status === 'gagal') {
+                    alert(data.pesan);
+                    btn.disabled = false;
+                    btn.innerText = "▶ Mulai Animasi";
+                    return;
+                }
+
+                // Place initial markers
+                userMarker = L.marker(data.user_latlng, {icon: iconUser, zIndexOffset: 1000}).addTo(map);
+                driverMarker = L.marker(data.driver_latlng, {icon: iconDriver, zIndexOffset: 1000}).addTo(map);
+                
+                // Fit bounds
+                let bounds = L.latLngBounds([data.user_latlng, data.driver_latlng]);
+                map.fitBounds(bounds, {padding: [50, 50]});
+
+                btn.innerText = "Menganimasi...";
+
+                const visitedNodes = data.visited_nodes;
+                const totalNodes = visitedNodes.length;
+                let currentIndex = 0;
+                
+                const delay = parseInt(document.getElementById('speed-slider').value);
+
+                animationInterval = setInterval(() => {
+                    // Process a chunk of nodes per frame to keep it smooth if delay is small
+                    let nodesPerFrame = delay < 5 ? 5 : 1; 
+                    
+                    for(let i=0; i<nodesPerFrame; i++) {
+                        if (currentIndex >= totalNodes) {
+                            clearInterval(animationInterval);
+                            finishAnimation(data);
+                            return;
+                        }
+
+                        let node = visitedNodes[currentIndex];
+                        
+                        // Calculate color based on cost relative to max cost to get gradient
+                        let percent = currentIndex / totalNodes;
+                        // Color from Green/Yellow to Red/Orange
+                        let r = 255;
+                        let g = Math.floor(255 * (1 - percent));
+                        let color = `rgb(${r}, ${g}, 0)`;
+
+                        L.circleMarker(node.latlng, {
+                            radius: 4,
+                            fillColor: color,
+                            color: color,
+                            weight: 1,
+                            opacity: 0.6,
+                            fillOpacity: 0.6
+                        }).addTo(rippleLayer);
+
+                        document.getElementById('stat-visited').innerText = currentIndex + 1;
+                        document.getElementById('progress-bar').style.width = ((currentIndex + 1) / totalNodes * 100) + '%';
+                        
+                        currentIndex++;
+                    }
+                }, delay);
+
+            })
+            .catch(err => {
+                alert("Error koneksi ke server!");
+                btn.disabled = false;
+                btn.innerText = "▶ Mulai Animasi";
+            });
+        }
+
+        function finishAnimation(data) {
+            document.getElementById('stat-visited').innerText = data.total_visited;
+            document.getElementById('stat-cost').innerText = data.total_cost;
+            document.getElementById('progress-bar').style.width = '100%';
+
+            // Draw final path
+            pathLine = L.polyline(data.final_path, {
+                color: '#ef4444',
+                weight: 6,
+                opacity: 0.9,
+                className: 'animated-path'
+            }).addTo(map);
+
+            // Bring markers to front
+            userMarker.setZIndexOffset(1000);
+            driverMarker.setZIndexOffset(1000);
+
+            const btn = document.getElementById('btn-start');
+            btn.disabled = false;
+            btn.innerText = "▶ Ulangi Animasi";
+        }
+    </script>
+</body>
+</html>
