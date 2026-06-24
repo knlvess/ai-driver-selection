@@ -45,21 +45,33 @@ transformer_to_wgs = Transformer.from_crs(crs_proj, "EPSG:4326", always_xy=True)
 
 all_nodes = list(G_proj.nodes())
 
+# Sesuai Modul 03: Penalti di-embed dalam weight function
+PENALTI_PER_NODE = 5
+
+def waktu_dengan_penalti(u, v, data):
+    """Custom weight function: waktu_tempuh + penalti per node."""
+    waktu_edge = min(e.get('waktu_tempuh_detik', float('inf')) for e in data.values())
+    return waktu_edge + PENALTI_PER_NODE
+
 def get_dijkstra_with_penalty(G, source_node, target_node):
-    waktu_dasar, jalur = nx.single_source_dijkstra(
-        G, source=source_node, target=target_node, weight='waktu_tempuh_detik'
+    waktu_tempuh_total_raw, jalur = nx.single_source_dijkstra(
+        G, source=source_node, target=target_node, weight=waktu_dengan_penalti
     )
-    jumlah_simpang = max(0, len(jalur) - 2)
-    penalti = jumlah_simpang * 5
-    waktu_total = waktu_dasar + penalti
     
-    jarak_aktual = 0
+    # Hitung detail sesuai Modul 03
+    jarak_aktual_rute = 0
+    waktu_tempuh_dasar = 0
     for i in range(len(jalur) - 1):
         u = jalur[i]
         v = jalur[i + 1]
-        jarak_aktual += G[u][v][0]['length']
-        
-    return waktu_total, jarak_aktual, jumlah_simpang, jalur
+        jarak_aktual_rute += G[u][v][0]['length']
+        waktu_tempuh_dasar += G[u][v][0]['waktu_tempuh_detik']
+    
+    jumlah_simpang = max(0, len(jalur) - 2)
+    penalti_waktu = jumlah_simpang * PENALTI_PER_NODE
+    waktu_tempuh_total = waktu_tempuh_total_raw - PENALTI_PER_NODE  # Koreksi source node
+    
+    return waktu_tempuh_total, jarak_aktual_rute, waktu_tempuh_dasar, jumlah_simpang, penalti_waktu, jalur
 
 def convert_nodes_to_latlng(rute_nodes):
     koordinat_leaflet = []
@@ -120,7 +132,7 @@ def find_driver():
     for driver in kandidat_driver_raw:
         d_node = driver['node_id']
         try:
-            waktu_total, jarak_aktual, jumlah_simpang, rute_jalur = get_dijkstra_with_penalty(
+            waktu_total, jarak_aktual, waktu_tempuh_dasar, jumlah_simpang, penalti_waktu, rute_jalur = get_dijkstra_with_penalty(
                 G_proj, d_node, user_node
             )
             
@@ -133,9 +145,11 @@ def find_driver():
             driver_copy = driver.copy()
             driver_copy.update({
                 'jarak_rute_m': round(jarak_aktual, 2),
+                'waktu_tempuh_dasar': round(waktu_tempuh_dasar, 2),
+                'jumlah_simpang': jumlah_simpang,
+                'penalti_detik': penalti_waktu,
                 'eta_detik': round(waktu_total, 2),
                 'eta_teks': eta_teks,
-                'jumlah_simpang': jumlah_simpang,
                 'rute_koordinat': rute_koordinat
             })
             kandidat_driver.append(driver_copy)

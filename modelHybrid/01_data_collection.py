@@ -13,7 +13,7 @@ def main():
 
     print("\n1. Membaca data peta jalan dari file lokal 'map.osm'...")
     try:
-        G = ox.graph_from_xml("map.osm")
+        G = ox.graph_from_xml("modelHybrid/map.osm")
     except FileNotFoundError:
         print("\n[ERROR] File 'map.osm' tidak ditemukan!")
         return

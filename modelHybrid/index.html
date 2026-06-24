@@ -434,7 +434,8 @@
                     <div class='popup-title'>${driver.driver_id} ${category === 'terpilih' ? '🏆' : ''}</div>
                     Jarak Lurus: ${driver.jarak_euclidean_m} m<br>
                     Jarak Rute: <b>${driver.jarak_rute_m} m</b><br>
-                    Simpang: ${driver.jumlah_simpang}<br>
+                    Waktu Dasar: ${driver.waktu_tempuh_dasar} dtk<br>
+                    Simpang: ${driver.jumlah_simpang} (Penalti: +${driver.penalti_detik} dtk)<br>
                     ETA: <span class="eta-highlight">${driver.eta_teks}</span>
                 `;
             } else {

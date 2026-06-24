@@ -1,1 +1,12 @@
 modelHybrid/.vscode
+.vscode
+peta_kemacetan_dummy.png
+tabel_edges_uns.csv
+tabel_nodes_uns.csv
+uns_projected_graph.graphml
+daftar_driver.csv
+kandidat_driver.csv
+lokasi_user.csv
+driver_candidates.png
+rute_pemenang.png
+
