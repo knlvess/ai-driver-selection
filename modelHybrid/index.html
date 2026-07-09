@@ -59,6 +59,8 @@
             box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
             overflow: hidden;
             transition: all 0.3s ease;
+            max-height: 90vh;
+            overflow-y: auto;
         }
 
         .sidebar-header {
@@ -110,6 +112,61 @@
             box-shadow: none;
             cursor: not-allowed;
             color: var(--text-secondary);
+        }
+
+        /* Step Controls */
+        #step-controls {
+            display: none;
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid var(--border-glass);
+        }
+
+        .step-indicator {
+            font-size: 0.8rem;
+            color: var(--accent-cyan);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+            text-align: center;
+            font-weight: 600;
+        }
+
+        button.btn-next {
+            background: linear-gradient(to right, #8b5cf6, #ec4899);
+            box-shadow: 0 4px 15px rgba(139, 92, 246, 0.3);
+        }
+
+        /* Info Panel */
+        #info-panel {
+            display: none;
+            padding: 15px;
+            margin: 15px 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            border: 1px solid var(--border-glass);
+            font-size: 0.85rem;
+        }
+
+        #info-panel h3 {
+            margin: 0 0 10px 0;
+            font-size: 0.95rem;
+            color: var(--success);
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 6px;
+        }
+
+        .info-label {
+            color: var(--text-secondary);
+        }
+
+        .info-val {
+            font-weight: 600;
+            color: var(--text-primary);
         }
 
         /* Legend Area */
@@ -206,6 +263,7 @@
             box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
             margin-top: -8px;
             margin-left: -8px;
+            transition: all 0.5s ease;
         }
 
         .marker-user {
@@ -228,6 +286,7 @@
             height: 18px;
             margin-top: -9px;
             margin-left: -9px;
+            z-index: 400 !important;
         }
 
         .marker-winner {
@@ -268,6 +327,8 @@
             }
         }
 
+        /* Euclidean Circle Animation Removed due to Leaflet SVG path compatibility */
+
         .leaflet-popup-content {
             font-family: 'Inter', sans-serif;
             font-size: 14px;
@@ -297,15 +358,24 @@
             <div class="instruction">
                 <b>Langkah-langkah:</b><br>
                 1. Klik peta untuk titik jemput.<br>
-                2. Klik tombol di bawah ini.<br>
-                3. Klik titik marker driver di peta untuk melihat rute & ETA.
+                2. Klik tombol Cari.<br>
+                3. Ikuti visualisasi step-by-step.
             </div>
-            <button id="btn-find" class="btn-primary" onclick="findDriver()">
+
+            <button id="btn-find" class="btn-primary" onclick="fetchDriverData()">
                 <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
                     <div id="spinner" class="spinner"></div>
                     <span id="btn-text">Cari Driver Terbaik</span>
                 </div>
             </button>
+
+            <!-- Step Controls (Hidden Initially) -->
+            <div id="step-controls">
+                <div id="step-indicator" class="step-indicator">Step 1 dari 5</div>
+                <button id="btn-next" class="btn-primary btn-next" onclick="nextStep()">
+                    Lanjut: Tampilkan Euclidean
+                </button>
+            </div>
         </div>
 
         <div class="legend-area">
@@ -336,6 +406,32 @@
             </div>
         </div>
 
+        <!-- Info Panel (Hidden Initially) -->
+        <div id="info-panel">
+            <h3>Ringkasan Hasil</h3>
+            <div class="info-row">
+                <span class="info-label">Total Driver Dievaluasi:</span>
+                <span class="info-val" id="info-total">0</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Kandidat (<1KM):< /span>
+                        <span class="info-val" id="info-kandidat">0</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Driver Terpilih:</span>
+                <span class="info-val" id="info-winner">-</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Jarak Rute:</span>
+                <span class="info-val" id="info-dist">-</span>
+            </div>
+            <div class="info-row"
+                style="margin-top: 8px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 8px;">
+                <span class="info-label">ETA:</span>
+                <span class="info-val" id="info-eta" style="color: var(--success); font-size: 1.1em;">-</span>
+            </div>
+        </div>
+
         <div class="status-footer">
             <div id="status-dot" style="width: 8px; height: 8px; border-radius: 50%; background: #475569;"></div>
             <span id="status-text">Menunggu input lokasi...</span>
@@ -352,10 +448,19 @@
             attribution: '© OpenStreetMap contributors'
         }).addTo(map);
 
-        // State variables
+        // Map State Variables
         let userMarker = null;
-        let driverMarkers = [];
-        let currentRouteLine = null;
+        let driverMarkersMap = new Map(); // Maps driver_id -> Marker object
+
+        // New Visualization Elements
+        let euclideanCircle = null;
+        let euclideanLines = [];
+        let candidateRouteLines = [];
+        let winnerRouteLine = null;
+
+        // Process State Variables
+        let apiData = null;
+        let currentStep = 0;
 
         // Icons
         const iconUser = L.divIcon({ className: 'custom-marker marker-user' });
@@ -365,6 +470,8 @@
 
         // Handle Map Click
         map.on('click', function (e) {
+            // Reset full state
+            resetUI();
             clearMapData();
 
             userMarker = L.marker(e.latlng, { icon: iconUser, zIndexOffset: 1000 }).addTo(map);
@@ -377,10 +484,32 @@
         });
 
         function clearMapData() {
-            driverMarkers.forEach(m => map.removeLayer(m));
-            driverMarkers = [];
-            if (currentRouteLine) map.removeLayer(currentRouteLine);
+            // Remove Markers
+            driverMarkersMap.forEach(m => map.removeLayer(m));
+            driverMarkersMap.clear();
+
             if (userMarker) map.removeLayer(userMarker);
+
+            // Remove Euclidean Elements
+            if (euclideanCircle) map.removeLayer(euclideanCircle);
+            euclideanLines.forEach(line => map.removeLayer(line));
+            euclideanLines = [];
+
+            // Remove Route Elements
+            candidateRouteLines.forEach(line => map.removeLayer(line));
+            candidateRouteLines = [];
+            if (winnerRouteLine) map.removeLayer(winnerRouteLine);
+
+            apiData = null;
+        }
+
+        function resetUI() {
+            document.getElementById('step-controls').style.display = 'none';
+            document.getElementById('info-panel').style.display = 'none';
+            document.getElementById('btn-find').style.display = 'block';
+            document.getElementById('btn-find').disabled = true;
+            document.getElementById('btn-next').innerText = "Lanjut: Tampilkan Euclidean";
+            currentStep = 0;
         }
 
         function updateStatus(msg, color) {
@@ -398,69 +527,10 @@
             text.innerText = isLoading ? 'Memproses...' : 'Cari Driver Terbaik';
         }
 
-        function drawRoute(koordinat) {
-            if (currentRouteLine) map.removeLayer(currentRouteLine);
-            if (!koordinat || koordinat.length === 0) return;
-
-            currentRouteLine = L.polyline(koordinat, {
-                color: '#3b82f6', // blue for route
-                weight: 6,
-                opacity: 0.8,
-                lineJoin: 'round'
-            }).addTo(map);
-        }
-
-        function createMarker(driver, category, hasRoute = false) {
-            let icon, popupContent;
-
-            if (category === 'terpilih') {
-                icon = iconWinner;
-            } else if (category === 'kandidat') {
-                icon = iconKandidat;
-            } else {
-                icon = iconDaftar;
-            }
-
-            let m = L.marker(driver.latlng, {
-                icon: icon,
-                driverId: driver.driver_id,
-                category: category,
-                routeData: driver.rute_koordinat,
-                zIndexOffset: (category === 'terpilih') ? 500 : (category === 'kandidat' ? 400 : 300)
-            }).addTo(map);
-
-            if (hasRoute) {
-                popupContent = `
-                    <div class='popup-title'>${driver.driver_id} ${category === 'terpilih' ? '🏆' : ''}</div>
-                    Jarak Lurus: ${driver.jarak_euclidean_m} m<br>
-                    Jarak Rute: <b>${driver.jarak_rute_m} m</b><br>
-                    Waktu Dasar: ${driver.waktu_tempuh_dasar} dtk<br>
-                    Simpang: ${driver.jumlah_simpang} (Penalti: +${driver.penalti_detik} dtk)<br>
-                    ETA: <span class="eta-highlight">${driver.eta_teks}</span>
-                `;
-            } else {
-                popupContent = `
-                    <div class='popup-title'>${driver.driver_id}</div>
-                    Jarak Lurus: ${driver.jarak_euclidean_m} m<br>
-                    <i>(Di luar radius 1KM, rute tidak dihitung)</i>
-                `;
-            }
-
-            m.bindPopup(popupContent);
-
-            m.on('click', function () {
-                if (hasRoute && driver.rute_koordinat) {
-                    drawRoute(driver.rute_koordinat);
-                } else {
-                    if (currentRouteLine) map.removeLayer(currentRouteLine);
-                }
-            });
-
-            driverMarkers.push(m);
-            return m;
-        }
-
-        function findDriver() {
+        // ==========================================
+        // DATA FETCHING
+        // ==========================================
+        function fetchDriverData() {
             if (!userMarker) {
                 alert("Klik dulu di peta untuk menentukan lokasi Anda!");
                 return;
@@ -487,44 +557,20 @@
                         return;
                     }
 
-                    updateStatus('Driver tercepat ditemukan!', 'var(--success)');
+                    // Save data globally
+                    apiData = data;
 
-                    // Pindahkan marker user ke node actual di graf
+                    // Snap user marker to graph node location
                     userMarker.setLatLng(data.user_latlng);
+                    map.panTo(data.user_latlng);
 
-                    let winnerId = data.driver_terpilih ? data.driver_terpilih.driver_id : null;
-                    let kandidatIds = new Set(data.kandidat_driver.map(k => k.driver_id));
+                    // Setup UI for step-by-step
+                    document.getElementById('btn-find').style.display = 'none';
+                    document.getElementById('step-controls').style.display = 'block';
 
-                    // Process all drivers (Merah untuk Daftar)
-                    data.daftar_driver.forEach(d => {
-                        if (!kandidatIds.has(d.driver_id)) {
-                            createMarker(d, 'daftar', false);
-                        }
-                    });
-
-                    // Process Kandidat (Kuning)
-                    data.kandidat_driver.forEach(k => {
-                        if (k.driver_id !== winnerId) {
-                            createMarker(k, 'kandidat', true);
-                        }
-                    });
-
-                    // Process Winner (Hijau)
-                    if (data.driver_terpilih) {
-                        let winnerMarker = createMarker(data.driver_terpilih, 'terpilih', true);
-
-                        // Draw winner route initially
-                        if (data.driver_terpilih.rute_koordinat) {
-                            drawRoute(data.driver_terpilih.rute_koordinat);
-                        }
-                        winnerMarker.openPopup();
-                    }
-
-                    // Fit bounds to show user and winner
-                    if (data.driver_terpilih && currentRouteLine) {
-                        map.fitBounds(currentRouteLine.getBounds(), { padding: [50, 50] });
-                    }
-
+                    // Start Step 1 automatically
+                    currentStep = 1;
+                    executeStep(currentStep);
                 })
                 .catch(err => {
                     toggleLoading(false);
@@ -532,6 +578,191 @@
                     console.error(err);
                 });
         }
+
+        // ==========================================
+        // STEP-BY-STEP LOGIC
+        // ==========================================
+        function nextStep() {
+            if (currentStep < 5) {
+                currentStep++;
+                executeStep(currentStep);
+            } else {
+                // If clicked at the end, reset so user can click map again
+                resetUI();
+                clearMapData();
+                updateStatus('Silakan klik peta untuk lokasi baru.', '#475569');
+            }
+        }
+
+        function executeStep(step) {
+            const indicator = document.getElementById('step-indicator');
+            const nextBtn = document.getElementById('btn-next');
+
+            indicator.innerText = `Step ${step} dari 5`;
+
+            switch (step) {
+                case 1:
+                    // STEP 1: Show all 50 drivers and their Euclidean Lines
+                    updateStatus('Step 1: Distribusi 50 Driver & Jarak Lurus', '#3b82f6');
+                    nextBtn.innerText = "Lanjut: Filter Radius 1KM";
+
+                    apiData.daftar_driver.forEach(driver => {
+                        // Create marker (initially all red)
+                        let popupContent = `
+                            <div class='popup-title'>${driver.driver_id}</div>
+                            Jarak Lurus: ${driver.jarak_euclidean_m} m
+                        `;
+                        let m = L.marker(driver.latlng, { icon: iconDaftar, zIndexOffset: 300 }).addTo(map);
+                        m.bindPopup(popupContent);
+                        driverMarkersMap.set(driver.driver_id, m);
+
+                        // Draw dashed euclidean line to user
+                        let eLine = L.polyline([driver.latlng, apiData.user_latlng], {
+                            color: '#ef4444', // red initially
+                            weight: 2,
+                            opacity: 0.3,
+                            dashArray: '5, 10'
+                        }).addTo(map);
+                        euclideanLines.push({ id: driver.driver_id, line: eLine });
+                    });
+
+                    // Zoom out to see all lines
+                    let allPoints = apiData.daftar_driver.map(d => d.latlng);
+                    allPoints.push(apiData.user_latlng);
+                    map.fitBounds(L.latLngBounds(allPoints));
+                    break;
+
+                case 2:
+                    // STEP 2: Draw 1KM Circle and Highlight Candidates (<1KM)
+                    updateStatus('Step 2: Filter Euclidean < 1KM', '#eab308');
+                    nextBtn.innerText = "Lanjut: Hitung Rute Dijkstra";
+
+                    // Draw Circle
+                    euclideanCircle = L.circle(apiData.user_latlng, {
+                        radius: 1000,
+                        color: '#06b6d4',
+                        fillColor: '#06b6d4',
+                        fillOpacity: 0.08,
+                        weight: 2,
+                        dashArray: '8, 8'
+                    }).addTo(map);
+
+                    // Highlight candidates
+                    let kandidatIds = new Set(apiData.kandidat_driver.map(k => k.driver_id));
+
+                    driverMarkersMap.forEach((marker, id) => {
+                        if (kandidatIds.has(id)) {
+                            // Update marker icon
+                            marker.setIcon(iconKandidat);
+                        }
+                    });
+
+                    // Update euclidean lines color for candidates
+                    euclideanLines.forEach(item => {
+                        if (kandidatIds.has(item.id)) {
+                            item.line.setStyle({ color: '#eab308', opacity: 0.6 });
+                        } else {
+                            item.line.setStyle({ opacity: 0.15 }); // Dim the outside ones
+                        }
+                    });
+
+                    // Zoom slightly closer
+                    map.fitBounds(euclideanCircle.getBounds());
+                    break;
+
+                case 3:
+                    // STEP 3: Draw Dijkstra routes for all candidates
+                    updateStatus('Step 3: Kalkulasi Rute Dijkstra Kandidat', '#8b5cf6');
+                    nextBtn.innerText = "Lanjut: Tentukan Pemenang";
+
+                    // First hide Euclidean lines to avoid visual clutter
+                    euclideanLines.forEach(item => map.removeLayer(item.line));
+
+                    // Draw Routes and update popups for candidates
+                    apiData.kandidat_driver.forEach(driver => {
+                        let marker = driverMarkersMap.get(driver.driver_id);
+
+                        // Update Popup with route info
+                        let popupContent = `
+                            <div class='popup-title'>${driver.driver_id} (Kandidat)</div>
+                            Jarak Lurus: ${driver.jarak_euclidean_m} m<br>
+                            Jarak Rute: <b>${driver.jarak_rute_m} m</b><br>
+                            ETA: <span class="eta-highlight">${driver.eta_teks}</span>
+                        `;
+                        marker.setPopupContent(popupContent);
+
+                        // Draw Dijkstra Route
+                        if (driver.rute_koordinat) {
+                            let routeLine = L.polyline(driver.rute_koordinat, {
+                                color: '#eab308',
+                                weight: 4,
+                                opacity: 0.5
+                            }).addTo(map);
+                            candidateRouteLines.push(routeLine);
+                        }
+                    });
+                    break;
+
+                case 4:
+                    // STEP 4: Highlight Winner
+                    updateStatus('Step 4: Driver Tercepat Ditemukan!', 'var(--success)');
+                    nextBtn.innerText = "Lanjut: Lihat Ringkasan Hasil";
+
+                    let winner = apiData.driver_terpilih;
+                    if (winner) {
+                        let marker = driverMarkersMap.get(winner.driver_id);
+                        marker.setIcon(iconWinner);
+
+                        let popupContent = `
+                            <div class='popup-title'>${winner.driver_id} 🏆</div>
+                            Jarak Lurus: ${winner.jarak_euclidean_m} m<br>
+                            Jarak Rute: <b>${winner.jarak_rute_m} m</b><br>
+                            Waktu Dasar: ${winner.waktu_tempuh_dasar} dtk<br>
+                            Simpang: ${winner.jumlah_simpang} (Penalti: +${winner.penalti_detik} dtk)<br>
+                            ETA: <span class="eta-highlight">${winner.eta_teks}</span>
+                        `;
+                        marker.setPopupContent(popupContent);
+                        marker.openPopup();
+
+                        // Draw Thicker Winner Route
+                        if (winner.rute_koordinat) {
+                            winnerRouteLine = L.polyline(winner.rute_koordinat, {
+                                color: '#10b981',
+                                weight: 6,
+                                opacity: 0.9,
+                                lineJoin: 'round'
+                            }).addTo(map);
+
+                            // Dim other candidate routes
+                            candidateRouteLines.forEach(line => line.setStyle({ opacity: 0.15 }));
+
+                            // Fit bounds to winner route
+                            map.fitBounds(winnerRouteLine.getBounds(), { padding: [50, 50] });
+                        }
+                    }
+                    break;
+
+                case 5:
+                    // STEP 5: Show Info Panel
+                    updateStatus('Selesai. Siap menerima lokasi baru.', '#0891b2');
+                    nextBtn.innerText = "Selesai: Cari Lokasi Baru";
+
+                    // Populate Info Panel
+                    document.getElementById('info-total').innerText = apiData.daftar_driver.length;
+                    document.getElementById('info-kandidat').innerText = apiData.kandidat_driver.length;
+
+                    if (apiData.driver_terpilih) {
+                        document.getElementById('info-winner').innerText = apiData.driver_terpilih.driver_id;
+                        document.getElementById('info-dist').innerText = apiData.driver_terpilih.jarak_rute_m + " m";
+                        document.getElementById('info-eta').innerText = apiData.driver_terpilih.eta_teks;
+                    }
+
+                    // Show panel
+                    document.getElementById('info-panel').style.display = 'block';
+                    break;
+            }
+        }
+
     </script>
 </body>
 

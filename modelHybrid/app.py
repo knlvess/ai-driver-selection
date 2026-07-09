@@ -95,7 +95,7 @@ def find_driver():
     user_lng_act, user_lat_act = transformer_to_wgs.transform(user_x_actual, user_y_actual)
 
     # 2. Modul 02: Generate 20 Driver & Hitung Euclidean
-    jumlah_driver = 20
+    jumlah_driver = 50
     driver_nodes = random.sample([n for n in all_nodes if n != user_node], jumlah_driver)
     
     daftar_driver = []
